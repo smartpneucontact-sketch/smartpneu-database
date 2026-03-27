@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartPneu Database</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --secondary: #3498db;
+            --success: #27ae60;
+            --warning: #f39c12;
+            --danger: #e74c3c;
+        }
+        body { background: #f5f6fa; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .navbar { background: linear-gradient(135deg, var(--primary), var(--secondary)); box-shadow: 0 2px 10px rgba(0,0,0,.1); }
+        .navbar-brand { font-weight: bold; font-size: 1.4rem; }
+
+        /* Tabs */
+        .nav-tabs .nav-link { color: #6c757d; font-weight: 500; }
+        .nav-tabs .nav-link.active { color: var(--secondary); border-bottom: 3px solid var(--secondary); font-weight: 600; }
+
+        /* Cards */
+        .card { border: none; border-radius: 12px; box-shadow: 0 2px 15px rgba(0,0,0,.08); }
+        .stats-card { background: linear-gradient(135deg, var(--secondary), #2980b9); color: white; }
+        .stats-card .display-4 { font-weight: bold; }
+
+        /* Camera */
+        #cameraPreview, #capturedImage, #uploadedImage {
+            width: 100%; max-height: 400px; object-fit: contain;
+            border-radius: 12px; background: #000;
+        }
+        .camera-container { position: relative; border-radius: 12px; overflow: hidden; background: #1a1a2e; min-height: 300px; display: flex; align-items: center; justify-content: center; }
+        .camera-overlay { position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; }
+        .camera-overlay .btn { border-radius: 50%; width: 56px; height: 56px; font-size: 1.3rem; box-shadow: 0 4px 15px rgba(0,0,0,.3); }
+        .capture-btn { background: white; border: 4px solid var(--danger); color: var(--danger); }
+        .capture-btn:hover { background: var(--danger); color: white; }
+
+        /* Recognition result */
+        .result-card { border-left: 4px solid var(--secondary); }
+        .result-card.found { border-left-color: var(--success); }
+        .result-card.not-found { border-left-color: var(--warning); }
+        .confidence-high { color: var(--success); }
+        .confidence-medium { color: var(--warning); }
+        .confidence-low { color: var(--danger); }
+
+        /* Brand list */
+        .brand-list { max-height: calc(100vh - 340px); overflow-y: auto; }
+        .brand-item { cursor: pointer; transition: all .2s; border-left: 3px solid transparent; }
+        .brand-item:hover { background: #e8f4fc; border-left-color: var(--secondary); }
+        .brand-item.active { background: #d4edfc; border-left-color: var(--secondary); }
+        .model-count { background: var(--secondary); color: white; font-size: .75rem; padding: 2px 8px; border-radius: 10px; }
+
+        /* Table */
+        .table th { background: var(--primary); color: white; font-weight: 500; position: sticky; top: 0; }
+        .table-container { max-height: calc(100vh - 400px); overflow-y: auto; }
+        .badge-ete { background: #f39c12; }
+        .badge-hiver { background: #3498db; }
+        .badge-4saisons { background: #27ae60; }
+        .check-icon { color: var(--success); }
+        .btn-action { padding: .25rem .5rem; font-size: .875rem; }
+
+        .search-box { border-radius: 20px; padding-left: 40px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%236c757d' viewBox='0 0 16 16'%3E%3Cpath d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z'/%3E%3C/svg%3E") no-repeat 15px center; }
+        .modal-header { background: linear-gradient(135deg, var(--primary), var(--secondary)); color: white; }
+        .modal-header .btn-close { filter: brightness(0) invert(1); }
+        .toast-container { position: fixed; top: 80px; right: 20px; z-index: 9999; }
+        .form-check-input:checked { background-color: var(--success); border-color: var(--success); }
+
+        /* Upload zone */
+        .upload-zone {
+            border: 3px dashed #ccc; border-radius: 16px; padding: 3rem; text-align: center;
+            cursor: pointer; transition: all .3s; background: #fafbfc;
+        }
+        .upload-zone:hover, .upload-zone.dragover { border-color: var(--secondary); background: #e8f4fc; }
+        .upload-zone i { font-size: 3rem; color: #ccc; }
+        .upload-zone:hover i { color: var(--secondary); }
+
+        /* Spinner */
+        .analyzing-overlay {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,.7); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; border-radius: 12px; color: white; z-index: 10;
+        }
+
+        @media (max-width: 768px) {
+            .camera-container { min-height: 250px; }
+            .stats-card .display-4 { font-size: 1.8rem; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar navbar-dark mb-3">
+    <div class="container-fluid">
+        <span class="navbar-brand"><i class="bi bi-gear-wide-connected me-2"></i>SmartPneu Database</span>
+        <div class="d-flex align-items-center gap-2">
+            <a href="/logout" class="btn btn-outline-light btn-sm"><i class="bi bi-box-arrow-right"></i></a>
+        </div>
+    </div>
+</nav>
+
+<div class="container-fluid px-3 px-md-4">
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs mb-4" role="tablist">
+        <li class="nav-item">
+            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabRecognize" type="button">
+                <i class="bi bi-camera me-1"></i> Tire Recognition
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabDatabase" type="button">
+                <i class="bi bi-database me-1"></i> Database Manager
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+
+        <!-- ============================================================ -->
+        <!-- TAB 1: TIRE RECOGNITION                                       -->
+        <!-- ============================================================ -->
+        <div class="tab-pane fade show active" id="tabRecognize">
+            <div class="row g-4">
+
+                <!-- Left: Camera / Upload -->
+                <div class="col-lg-6">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="bi bi-camera me-2"></i>Capture or Upload</h5>
+                            <div class="btn-group btn-group-sm" id="inputToggle">
+                                <button class="btn btn-primary active" onclick="showCamera()">
+                                    <i class="bi bi-camera-video"></i> Camera
+                                </button>
+                                <button class="btn btn-outline-primary" onclick="showUpload()">
+                                    <i class="bi bi-image"></i> Upload
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+
+                            <!-- Camera mode -->
+                            <div id="cameraMode">
+                                <div class="camera-container" id="cameraContainer">
+                                    <video id="cameraPreview" autoplay playsinline style="display:none;"></video>
+                                    <canvas id="cameraCanvas" style="display:none;"></canvas>
+                                    <img id="capturedImage" style="display:none;">
+                                    <div id="cameraPlaceholder" class="text-white text-center p-4">
+                                        <i class="bi bi-camera-video display-3 d-block mb-2"></i>
+                                        <p>Click "Start Camera" to begin</p>
+                                        <button class="btn btn-light" onclick="startCamera()">
+                                            <i class="bi bi-play-circle me-1"></i> Start Camera
+                                        </button>
+                                    </div>
+                                    <div class="camera-overlay" id="cameraControls" style="display:none;">
+                                        <button class="btn capture-btn" onclick="capturePhoto()" title="Take Photo">
+                                            <i class="bi bi-circle-fill"></i>
+                                        </button>
+                                        <button class="btn btn-light" onclick="switchCameraFacing()" title="Flip Camera" style="border-radius:50%;width:46px;height:46px;">
+                                            <i class="bi bi-arrow-repeat"></i>
+                                        </button>
+                                    </div>
+                                    <div class="analyzing-overlay" id="analyzingOverlay" style="display:none;">
+                                        <div class="spinner-border text-light mb-3" style="width:3rem;height:3rem;"></div>
+                                        <h5>Analyzing tire...</h5>
+                                        <p class="text-white-50">Claude Opus 4.6 is reading the sidewall</p>
+                                    </div>
+                                </div>
+                                <div class="mt-3 d-flex gap-2" id="captureActions" style="display:none !important;">
+                                    <button class="btn btn-primary flex-fill" onclick="analyzeImage()">
+                                        <i class="bi bi-search me-1"></i> Recognize Tire
+                                    </button>
+                                    <button class="btn btn-outline-secondary" onclick="retakePhoto()">
+                                        <i class="bi bi-arrow-counterclockwise me-1"></i> Retake
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Upload mode -->
+                            <div id="uploadMode" style="display:none;">
+                                <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click();">
+                                    <i class="bi bi-cloud-arrow-up d-block mb-2"></i>
+                                    <h6>Drop an image here or click to browse</h6>
+                                    <p class="text-muted mb-0">Supports JPG, PNG, WEBP</p>
+                                </div>
+                                <input type="file" id="fileInput" accept="image/*" hidden>
+                                <div id="uploadPreviewContainer" style="display:none;" class="mt-3">
+                                    <div class="camera-container">
+                                        <img id="uploadedImage">
+                                        <div class="analyzing-overlay" id="analyzingOverlayUpload" style="display:none;">
+                                            <div class="spinner-border text-light mb-3" style="width:3rem;height:3rem;"></div>
+                                            <h5>Analyzing tire...</h5>
+                                            <p class="text-white-50">Claude Opus 4.6 is reading the sidewall</p>
+                                        </div>
+                                    </div>
+                                    <div class="mt-3 d-flex gap-2">
+                                        <button class="btn btn-primary flex-fill" onclick="analyzeImage()">
+                                            <i class="bi bi-search me-1"></i> Recognize Tire
+                                        </button>
+                                        <button class="btn btn-outline-secondary" onclick="clearUpload()">
+                                            <i class="bi bi-x-lg me-1"></i> Clear
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Recognition Results -->
+                <div class="col-lg-6">
+                    <div class="card h-100">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="bi bi-cpu me-2"></i>Recognition Result</h5>
+                        </div>
+                        <div class="card-body" id="resultArea">
+                            <div class="text-center text-muted py-5">
+                                <i class="bi bi-camera display-3 d-block mb-3"></i>
+                                <h5>Take or upload a tire photo</h5>
+                                <p>Claude Opus 4.6 will identify the brand, model, and specs</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- TAB 2: DATABASE MANAGER                                       -->
+        <!-- ============================================================ -->
+        <div class="tab-pane fade" id="tabDatabase">
+            <!-- Stats -->
+            <div class="row mb-4">
+                <div class="col-6 col-md-3 mb-2">
+                    <div class="card stats-card"><div class="card-body text-center py-2">
+                        <small class="text-white-50">Brands</small>
+                        <div class="display-4" id="statBrands">{{ stats.brands }}</div>
+                    </div></div>
+                </div>
+                <div class="col-6 col-md-3 mb-2">
+                    <div class="card stats-card"><div class="card-body text-center py-2">
+                        <small class="text-white-50">Models</small>
+                        <div class="display-4" id="statModels">{{ stats.models }}</div>
+                    </div></div>
+                </div>
+                <div class="col-4 col-md-2 mb-2">
+                    <div class="card stats-card"><div class="card-body text-center py-2">
+                        <small class="text-white-50">Summer</small>
+                        <div class="display-4" id="statEte">{{ stats.types.get('Ete', 0) }}</div>
+                    </div></div>
+                </div>
+                <div class="col-4 col-md-2 mb-2">
+                    <div class="card stats-card"><div class="card-body text-center py-2">
+                        <small class="text-white-50">Winter</small>
+                        <div class="display-4" id="statHiver">{{ stats.types.get('Hiver', 0) }}</div>
+                    </div></div>
+                </div>
+                <div class="col-4 col-md-2 mb-2">
+                    <div class="card stats-card"><div class="card-body text-center py-2">
+                        <small class="text-white-50">All-Season</small>
+                        <div class="display-4" id="stat4S">{{ stats.types.get('4 saisons', 0) }}</div>
+                    </div></div>
+                </div>
+            </div>
+
+            <div class="row">
+                <!-- Brands Panel -->
+                <div class="col-md-3 mb-3">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="bi bi-building me-2"></i>Brands</h5>
+                            <button class="btn btn-primary btn-sm" onclick="showBrandModal()"><i class="bi bi-plus-lg"></i></button>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="brand-list" id="brandList">
+                                {% for brand in brands %}
+                                <div class="brand-item list-group-item d-flex justify-content-between align-items-center"
+                                     data-brand="{{ brand.name }}" onclick="selectBrand('{{ brand.name }}')">
+                                    <span>{{ brand.name }}</span>
+                                    <span class="model-count">{{ brand.models|length }}</span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Models Panel -->
+                <div class="col-md-9">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <h5 class="mb-0"><i class="bi bi-circle me-2"></i><span id="modelsTitle">Select a brand</span></h5>
+                            <div class="d-flex gap-2">
+                                <input type="text" class="form-control form-control-sm" id="modelSearch" placeholder="Filter..." style="width:160px;">
+                                <button class="btn btn-success btn-sm" id="btnAddModel" onclick="showModelModal()" disabled>
+                                    <i class="bi bi-plus-lg me-1"></i>Add
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-container">
+                                <table class="table table-hover mb-0">
+                                    <thead><tr>
+                                        <th>Model</th><th>Type</th><th>Speed</th><th>Load</th><th>Price</th>
+                                        <th>3PMSF</th><th>RF</th><th>RP</th><th>XL</th><th>Actions</th>
+                                    </tr></thead>
+                                    <tbody id="modelTableBody">
+                                        <tr><td colspan="10" class="text-center text-muted py-5">
+                                            <i class="bi bi-arrow-left-circle display-4 d-block mb-3"></i>Select a brand
+                                        </td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Export / Import -->
+            <div class="mt-3 d-flex gap-2 justify-content-end">
+                <button class="btn btn-outline-secondary btn-sm" onclick="exportDatabase()"><i class="bi bi-download me-1"></i>Export</button>
+                <label class="btn btn-outline-secondary btn-sm"><i class="bi bi-upload me-1"></i>Import<input type="file" hidden accept=".json" onchange="importDatabase(this)"></label>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Brand Modal -->
+<div class="modal fade" id="brandModal" tabindex="-1">
+    <div class="modal-dialog"><div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title" id="brandModalTitle">Add Brand</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="brandOriginalName">
+            <div class="mb-3">
+                <label class="form-label">Brand Name</label>
+                <input type="text" class="form-control" id="brandName" placeholder="Enter brand name">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-danger me-auto" id="btnDeleteBrand" onclick="deleteBrand()" style="display:none"><i class="bi bi-trash me-1"></i>Delete</button>
+            <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button class="btn btn-primary" onclick="saveBrand()">Save</button>
+        </div>
+    </div></div>
+</div>
+
+<!-- Model Modal -->
+<div class="modal fade" id="modelModal" tabindex="-1">
+    <div class="modal-dialog modal-lg"><div class="modal-content">
+        <div class="modal-header">
+            <h5 class="modal-title" id="modelModalTitle">Add Model</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="modelOriginalName">
+            <input type="hidden" id="modelBrandOverride">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Model Name *</label>
+                    <input type="text" class="form-control" id="modelName" placeholder="e.g., Pilot Sport 4">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Type *</label>
+                    <select class="form-select" id="modelType">
+                        <option value="Ete">Été (Summer)</option>
+                        <option value="Hiver">Hiver (Winter)</option>
+                        <option value="4 saisons">4 Saisons (All-Season)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Speed Index</label>
+                    <select class="form-select" id="modelSpeed">
+                        <option value="Q">Q (160)</option><option value="R">R (170)</option>
+                        <option value="S">S (180)</option><option value="T">T (190)</option>
+                        <option value="H">H (210)</option><option value="V">V (240)</option>
+                        <option value="W" selected>W (270)</option><option value="Y">Y (300)</option>
+                    </select>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Load Index</label>
+                    <input type="text" class="form-control" id="modelLoad" placeholder="e.g., 91">
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Price (€)</label>
+                    <input type="text" class="form-control" id="modelPrice" placeholder="e.g., 150.00">
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-6 col-md-3 mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="model3pmsf">
+                        <label class="form-check-label" for="model3pmsf">3PMSF</label>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3 mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="modelRunflat">
+                        <label class="form-check-label" for="modelRunflat">Runflat</label>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3 mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="modelProtection">
+                        <label class="form-check-label" for="modelProtection">Rim Prot.</label>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3 mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="modelRenforce">
+                        <label class="form-check-label" for="modelRenforce">Reinforced</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-danger me-auto" id="btnDeleteModel" onclick="deleteModel()" style="display:none"><i class="bi bi-trash me-1"></i>Delete</button>
+            <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button class="btn btn-primary" onclick="saveModel()">Save</button>
+        </div>
+    </div></div>
+</div>
+
+<!-- Search Results Modal -->
+<div class="modal fade" id="searchModal" tabindex="-1">
+    <div class="modal-dialog modal-lg"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Search Results</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body"><div id="searchResults"></div></div>
+    </div></div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ===========================================================================
+// State
+// ===========================================================================
+let currentBrand = null;
+let currentModels = [];
+let currentImageBase64 = null;
+let cameraStream = null;
+let facingMode = 'environment';
+
+// ===========================================================================
+// Toast
+// ===========================================================================
+function showToast(msg, type='success') {
+    const t = document.createElement('div');
+    t.className = `toast show align-items-center text-white bg-${type} border-0`;
+    t.innerHTML = `<div class="d-flex"><div class="toast-body">${msg}</div><button class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+    document.getElementById('toastContainer').appendChild(t);
+    setTimeout(() => t.remove(), 3000);
+}
+
+// ===========================================================================
+// Camera
+// ===========================================================================
+function showCamera() {
+    document.getElementById('cameraMode').style.display = '';
+    document.getElementById('uploadMode').style.display = 'none';
+    document.querySelectorAll('#inputToggle .btn').forEach((b,i) => {
+        b.className = i === 0 ? 'btn btn-primary active' : 'btn btn-outline-primary';
+    });
+}
+function showUpload() {
+    stopCamera();
+    document.getElementById('cameraMode').style.display = 'none';
+    document.getElementById('uploadMode').style.display = '';
+    document.querySelectorAll('#inputToggle .btn').forEach((b,i) => {
+        b.className = i === 1 ? 'btn btn-primary active' : 'btn btn-outline-primary';
+    });
+}
+
+async function startCamera() {
+    try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } }
+        });
+        const vid = document.getElementById('cameraPreview');
+        vid.srcObject = cameraStream;
+        vid.style.display = '';
+        document.getElementById('cameraPlaceholder').style.display = 'none';
+        document.getElementById('cameraControls').style.display = 'flex';
+        document.getElementById('capturedImage').style.display = 'none';
+        document.getElementById('captureActions').style.display = 'none';
+        document.getElementById('captureActions').style.cssText = 'display:none!important';
+    } catch(e) {
+        showToast('Camera access denied: ' + e.message, 'danger');
+    }
+}
+
+function stopCamera() {
+    if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
+}
+
+async function switchCameraFacing() {
+    facingMode = facingMode === 'environment' ? 'user' : 'environment';
+    stopCamera();
+    await startCamera();
+}
+
+function capturePhoto() {
+    const vid = document.getElementById('cameraPreview');
+    const canvas = document.getElementById('cameraCanvas');
+    canvas.width = vid.videoWidth;
+    canvas.height = vid.videoHeight;
+    canvas.getContext('2d').drawImage(vid, 0, 0);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    currentImageBase64 = dataUrl;
+
+    document.getElementById('capturedImage').src = dataUrl;
+    document.getElementById('capturedImage').style.display = '';
+    vid.style.display = 'none';
+    document.getElementById('cameraControls').style.display = 'none';
+    document.getElementById('captureActions').style.cssText = '';
+    stopCamera();
+}
+
+function retakePhoto() {
+    currentImageBase64 = null;
+    document.getElementById('capturedImage').style.display = 'none';
+    document.getElementById('captureActions').style.cssText = 'display:none!important';
+    startCamera();
+}
+
+// ===========================================================================
+// Upload
+// ===========================================================================
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+
+['dragenter','dragover'].forEach(e => uploadZone.addEventListener(e, ev => { ev.preventDefault(); uploadZone.classList.add('dragover'); }));
+['dragleave','drop'].forEach(e => uploadZone.addEventListener(e, ev => { ev.preventDefault(); uploadZone.classList.remove('dragover'); }));
+uploadZone.addEventListener('drop', ev => { if(ev.dataTransfer.files.length) handleFile(ev.dataTransfer.files[0]); });
+fileInput.addEventListener('change', () => { if(fileInput.files.length) handleFile(fileInput.files[0]); });
+
+function handleFile(file) {
+    if (!file.type.startsWith('image/')) { showToast('Please select an image file', 'danger'); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+        currentImageBase64 = e.target.result;
+        document.getElementById('uploadedImage').src = e.target.result;
+        document.getElementById('uploadZone').style.display = 'none';
+        document.getElementById('uploadPreviewContainer').style.display = '';
+    };
+    reader.readAsDataURL(file);
+}
+
+function clearUpload() {
+    currentImageBase64 = null;
+    fileInput.value = '';
+    document.getElementById('uploadZone').style.display = '';
+    document.getElementById('uploadPreviewContainer').style.display = 'none';
+    document.getElementById('resultArea').innerHTML = `
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-camera display-3 d-block mb-3"></i>
+            <h5>Take or upload a tire photo</h5>
+            <p>Claude Opus 4.6 will identify the brand, model, and specs</p>
+        </div>`;
+}
+
+// ===========================================================================
+// Analyze (send to Claude vision)
+// ===========================================================================
+async function analyzeImage() {
+    if (!currentImageBase64) { showToast('No image to analyze', 'danger'); return; }
+
+    // Show spinner
+    const overlay1 = document.getElementById('analyzingOverlay');
+    const overlay2 = document.getElementById('analyzingOverlayUpload');
+    if (overlay1) overlay1.style.display = 'flex';
+    if (overlay2) overlay2.style.display = 'flex';
+
+    document.getElementById('resultArea').innerHTML = `
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary mb-3" style="width:3rem;height:3rem;"></div>
+            <h5>Analyzing with Claude Opus 4.6...</h5>
+            <p class="text-muted">Reading tire sidewall markings</p>
+        </div>`;
+
+    try {
+        const res = await fetch('/api/recognize', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ image: currentImageBase64 })
+        });
+        const result = await res.json();
+        if (result.error) {
+            document.getElementById('resultArea').innerHTML = `
+                <div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>${result.error}</div>`;
+        } else {
+            renderResult(result);
+        }
+    } catch(e) {
+        document.getElementById('resultArea').innerHTML = `
+            <div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>Error: ${e.message}</div>`;
+    } finally {
+        if (overlay1) overlay1.style.display = 'none';
+        if (overlay2) overlay2.style.display = 'none';
+    }
+}
+
+// ===========================================================================
+// Render recognition result
+// ===========================================================================
+function renderResult(r) {
+    const statusClass = r.model_exists ? 'found' : (r.brand_exists ? 'not-found' : 'not-found');
+    const confClass = `confidence-${r.confidence || 'low'}`;
+
+    let statusBadge, actionButtons;
+    if (r.model_exists) {
+        statusBadge = '<span class="badge bg-success fs-6"><i class="bi bi-check-circle me-1"></i>Found in database</span>';
+        actionButtons = `
+            <button class="btn btn-primary" onclick='openEditFromResult(${JSON.stringify(r).replace(/'/g,"&#39;")})'>
+                <i class="bi bi-pencil me-1"></i>Edit Model
+            </button>`;
+    } else if (r.brand_exists) {
+        statusBadge = '<span class="badge bg-warning text-dark fs-6"><i class="bi bi-exclamation-triangle me-1"></i>Brand exists, model not found</span>';
+        actionButtons = `
+            <button class="btn btn-success" onclick='openAddFromResult(${JSON.stringify(r).replace(/'/g,"&#39;")})'>
+                <i class="bi bi-plus-circle me-1"></i>Add Model to ${r.brand}
+            </button>`;
+    } else {
+        statusBadge = '<span class="badge bg-secondary fs-6"><i class="bi bi-question-circle me-1"></i>Not in database</span>';
+        actionButtons = `
+            <button class="btn btn-success" onclick='addBrandAndModelFromResult(${JSON.stringify(r).replace(/'/g,"&#39;")})'>
+                <i class="bi bi-plus-circle me-1"></i>Add Brand + Model
+            </button>`;
+    }
+
+    const check = v => v ? '<i class="bi bi-check-lg text-success"></i>' : '<i class="bi bi-dash text-muted"></i>';
+
+    document.getElementById('resultArea').innerHTML = `
+        <div class="result-card ${statusClass} p-3 mb-3 bg-light rounded">
+            <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+                <div>
+                    <h3 class="mb-1">${r.brand || 'Unknown'}</h3>
+                    <h5 class="text-muted">${r.model || 'Unknown model'}</h5>
+                </div>
+                ${statusBadge}
+            </div>
+            <div class="row g-2 mb-3">
+                <div class="col-6 col-md-4"><strong>Type:</strong> ${r.type || '-'}</div>
+                <div class="col-6 col-md-4"><strong>Size:</strong> ${r.size || '-'}</div>
+                <div class="col-6 col-md-4"><strong>Speed:</strong> ${r.speed_index || '-'}</div>
+                <div class="col-6 col-md-4"><strong>Load:</strong> ${r.load_index || '-'}</div>
+                <div class="col-6 col-md-4"><strong>Confidence:</strong> <span class="${confClass} fw-bold">${r.confidence || '-'}</span></div>
+            </div>
+            <div class="row g-2 mb-3">
+                <div class="col-6 col-md-3">3PMSF: ${check(r['3pmsf'])}</div>
+                <div class="col-6 col-md-3">Runflat: ${check(r.runflat)}</div>
+                <div class="col-6 col-md-3">Rim Prot.: ${check(r.protection_jante)}</div>
+                <div class="col-6 col-md-3">XL: ${check(r.renforce)}</div>
+            </div>
+            ${r.notes ? `<p class="text-muted small mb-3"><i class="bi bi-info-circle me-1"></i>${r.notes}</p>` : ''}
+            <div class="d-flex gap-2 flex-wrap">${actionButtons}</div>
+        </div>
+        ${r.model_exists && r.existing_model ? `
+        <div class="mt-3 p-3 border rounded">
+            <h6 class="text-muted mb-2">Current database entry:</h6>
+            <div class="row g-1 small">
+                <div class="col-6"><strong>Type:</strong> ${r.existing_model.type}</div>
+                <div class="col-6"><strong>Speed:</strong> ${r.existing_model.speed_index || '-'}</div>
+                <div class="col-6"><strong>Load:</strong> ${r.existing_model.load_index || '-'}</div>
+                <div class="col-6"><strong>Price:</strong> ${r.existing_model.price || '-'}€</div>
+            </div>
+        </div>` : ''}
+    `;
+}
+
+// ===========================================================================
+// Actions from recognition result
+// ===========================================================================
+function openEditFromResult(r) {
+    // Switch to DB tab, select brand, then open model modal
+    document.querySelector('[data-bs-target="#tabDatabase"]').click();
+    setTimeout(async () => {
+        await selectBrand(r.brand);
+        setTimeout(() => showModelModal(r.model), 300);
+    }, 200);
+}
+
+function openAddFromResult(r) {
+    // Switch to DB tab, select brand, open modal pre-filled
+    document.querySelector('[data-bs-target="#tabDatabase"]').click();
+    setTimeout(async () => {
+        await selectBrand(r.brand);
+        setTimeout(() => {
+            showModelModal();
+            // Pre-fill from recognition
+            document.getElementById('modelName').value = r.model || '';
+            document.getElementById('modelType').value = r.type || 'Ete';
+            if (r.speed_index) document.getElementById('modelSpeed').value = r.speed_index;
+            if (r.load_index) document.getElementById('modelLoad').value = r.load_index;
+            document.getElementById('model3pmsf').checked = !!r['3pmsf'];
+            document.getElementById('modelRunflat').checked = !!r.runflat;
+            document.getElementById('modelProtection').checked = !!r.protection_jante;
+            document.getElementById('modelRenforce').checked = !!r.renforce;
+        }, 300);
+    }, 200);
+}
+
+async function addBrandAndModelFromResult(r) {
+    // Add brand first, then open model add
+    const res = await fetch('/api/brands', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ name: r.brand })
+    });
+    const d = await res.json();
+    if (d.error) { showToast(d.error, 'danger'); return; }
+    showToast(`Brand "${r.brand}" added`, 'success');
+    await refreshBrands();
+    openAddFromResult(r);
+}
+
+// ===========================================================================
+// Database Manager (same as original)
+// ===========================================================================
+async function updateStats() {
+    const res = await fetch('/api/stats');
+    const s = await res.json();
+    document.getElementById('statBrands').textContent = s.brands;
+    document.getElementById('statModels').textContent = s.models;
+    document.getElementById('statEte').textContent = s.types['Ete'] || 0;
+    document.getElementById('statHiver').textContent = s.types['Hiver'] || 0;
+    document.getElementById('stat4S').textContent = s.types['4 saisons'] || 0;
+}
+
+async function refreshBrands() {
+    const res = await fetch('/api/brands');
+    const brands = await res.json();
+    document.getElementById('brandList').innerHTML = brands.map(b => `
+        <div class="brand-item list-group-item d-flex justify-content-between align-items-center ${currentBrand === b.name ? 'active' : ''}"
+             data-brand="${b.name}" onclick="selectBrand('${b.name.replace(/'/g,"\\'")}')" ondblclick="showBrandModal('${b.name.replace(/'/g,"\\'")}')">
+            <span>${b.name}</span><span class="model-count">${b.model_count}</span>
+        </div>`).join('');
+    updateStats();
+}
+
+async function selectBrand(name) {
+    currentBrand = name;
+    document.querySelectorAll('.brand-item').forEach(el => el.classList.toggle('active', el.dataset.brand === name));
+    document.getElementById('modelsTitle').textContent = name;
+    document.getElementById('btnAddModel').disabled = false;
+    const res = await fetch(`/api/brands/${encodeURIComponent(name)}/models`);
+    currentModels = await res.json();
+    renderModels(currentModels);
+}
+
+function renderModels(models) {
+    const tb = document.getElementById('modelTableBody');
+    if (!models.length) { tb.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-5"><i class="bi bi-inbox display-4 d-block mb-3"></i>No models yet</td></tr>'; return; }
+    tb.innerHTML = models.map(m => `<tr>
+        <td><strong>${m.name}</strong></td>
+        <td><span class="badge badge-${m.type==='Ete'?'ete':m.type==='Hiver'?'hiver':'4saisons'}">${m.type}</span></td>
+        <td>${m.speed_index||'-'}</td><td>${m.load_index||'-'}</td><td>${m.price||'-'}</td>
+        <td>${m['3pmsf']?'<i class="bi bi-check-lg check-icon"></i>':''}</td>
+        <td>${m.runflat?'<i class="bi bi-check-lg check-icon"></i>':''}</td>
+        <td>${m.protection_jante?'<i class="bi bi-check-lg check-icon"></i>':''}</td>
+        <td>${m.renforce?'<i class="bi bi-check-lg check-icon"></i>':''}</td>
+        <td>
+            <button class="btn btn-outline-primary btn-action" onclick="showModelModal('${m.name.replace(/'/g,"\\'")}')"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-outline-secondary btn-action" onclick="duplicateModel('${m.name.replace(/'/g,"\\'")}')"><i class="bi bi-copy"></i></button>
+        </td></tr>`).join('');
+}
+
+document.getElementById('modelSearch').addEventListener('input', e => {
+    const q = e.target.value.toLowerCase();
+    renderModels(currentModels.filter(m => m.name.toLowerCase().includes(q)));
+});
+
+// Brand modal
+function showBrandModal(name=null) {
+    document.getElementById('brandModalTitle').textContent = name ? 'Edit Brand' : 'Add Brand';
+    document.getElementById('brandOriginalName').value = name || '';
+    document.getElementById('brandName').value = name || '';
+    document.getElementById('btnDeleteBrand').style.display = name ? 'block' : 'none';
+    new bootstrap.Modal(document.getElementById('brandModal')).show();
+}
+
+async function saveBrand() {
+    const orig = document.getElementById('brandOriginalName').value;
+    const name = document.getElementById('brandName').value.trim();
+    if (!name) { showToast('Name required','danger'); return; }
+    const res = orig
+        ? await fetch(`/api/brands/${encodeURIComponent(orig)}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name}) })
+        : await fetch('/api/brands', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name}) });
+    const d = await res.json();
+    if (d.error) { showToast(d.error,'danger'); } else {
+        bootstrap.Modal.getInstance(document.getElementById('brandModal')).hide();
+        showToast(orig?'Brand updated':'Brand added');
+        if (currentBrand===orig) currentBrand=name;
+        refreshBrands();
+    }
+}
+
+async function deleteBrand() {
+    const name = document.getElementById('brandOriginalName').value;
+    if (!confirm(`Delete "${name}" and all models?`)) return;
+    const res = await fetch(`/api/brands/${encodeURIComponent(name)}`, {method:'DELETE'});
+    const d = await res.json();
+    if (d.error) { showToast(d.error,'danger'); } else {
+        bootstrap.Modal.getInstance(document.getElementById('brandModal')).hide();
+        showToast('Brand deleted');
+        if (currentBrand===name) { currentBrand=null; document.getElementById('modelsTitle').textContent='Select a brand'; document.getElementById('modelTableBody').innerHTML='<tr><td colspan="10" class="text-center text-muted py-5">Select a brand</td></tr>'; document.getElementById('btnAddModel').disabled=true; }
+        refreshBrands();
+    }
+}
+
+// Model modal
+function showModelModal(modelName=null) {
+    const model = modelName ? currentModels.find(m=>m.name===modelName) : null;
+    document.getElementById('modelModalTitle').textContent = model ? 'Edit Model' : 'Add Model';
+    document.getElementById('modelOriginalName').value = modelName || '';
+    document.getElementById('modelName').value = model?.name || '';
+    document.getElementById('modelType').value = model?.type || 'Ete';
+    document.getElementById('modelSpeed').value = model?.speed_index || 'W';
+    document.getElementById('modelLoad').value = model?.load_index || '';
+    document.getElementById('modelPrice').value = model?.price || '';
+    document.getElementById('model3pmsf').checked = model?.['3pmsf'] || false;
+    document.getElementById('modelRunflat').checked = model?.runflat || false;
+    document.getElementById('modelProtection').checked = model?.protection_jante || false;
+    document.getElementById('modelRenforce').checked = model?.renforce || false;
+    document.getElementById('btnDeleteModel').style.display = model ? 'block' : 'none';
+    new bootstrap.Modal(document.getElementById('modelModal')).show();
+}
+
+async function saveModel() {
+    const orig = document.getElementById('modelOriginalName').value;
+    const brand = currentBrand;
+    const md = {
+        name: document.getElementById('modelName').value.trim(),
+        type: document.getElementById('modelType').value,
+        speed_index: document.getElementById('modelSpeed').value,
+        load_index: document.getElementById('modelLoad').value,
+        price: document.getElementById('modelPrice').value,
+        '3pmsf': document.getElementById('model3pmsf').checked,
+        runflat: document.getElementById('modelRunflat').checked,
+        protection_jante: document.getElementById('modelProtection').checked,
+        renforce: document.getElementById('modelRenforce').checked
+    };
+    if (!md.name) { showToast('Name required','danger'); return; }
+    const res = orig
+        ? await fetch(`/api/brands/${encodeURIComponent(brand)}/models/${encodeURIComponent(orig)}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(md) })
+        : await fetch(`/api/brands/${encodeURIComponent(brand)}/models`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(md) });
+    const d = await res.json();
+    if (d.error) { showToast(d.error,'danger'); } else {
+        bootstrap.Modal.getInstance(document.getElementById('modelModal')).hide();
+        showToast(orig?'Model updated':'Model added');
+        selectBrand(brand); refreshBrands();
+    }
+}
+
+async function deleteModel() {
+    const name = document.getElementById('modelOriginalName').value;
+    if (!confirm(`Delete model "${name}"?`)) return;
+    const res = await fetch(`/api/brands/${encodeURIComponent(currentBrand)}/models/${encodeURIComponent(name)}`, {method:'DELETE'});
+    const d = await res.json();
+    if (d.error) { showToast(d.error,'danger'); } else {
+        bootstrap.Modal.getInstance(document.getElementById('modelModal')).hide();
+        showToast('Model deleted'); selectBrand(currentBrand); refreshBrands();
+    }
+}
+
+async function duplicateModel(name) {
+    const res = await fetch(`/api/brands/${encodeURIComponent(currentBrand)}/models/${encodeURIComponent(name)}/duplicate`, {method:'POST'});
+    const d = await res.json();
+    if (d.error) showToast(d.error,'danger'); else { showToast('Model duplicated'); selectBrand(currentBrand); refreshBrands(); }
+}
+
+function exportDatabase() { window.location.href = '/api/export'; }
+async function importDatabase(input) {
+    if (!input.files[0]) return;
+    const fd = new FormData(); fd.append('file', input.files[0]);
+    const res = await fetch('/api/import', { method:'POST', body:fd });
+    const d = await res.json();
+    if (d.error) showToast(d.error,'danger'); else { showToast('Database imported'); location.reload(); }
+    input.value='';
+}
+</script>
+</body>
+</html>
