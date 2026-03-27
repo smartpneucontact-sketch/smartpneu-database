@@ -609,117 +609,196 @@ async function analyzeImage() {
 }
 
 // ===========================================================================
-// Render recognition result
+// Render recognition result — inline editable form
 // ===========================================================================
+let lastRecognitionResult = null;
+
 function renderResult(r) {
-    const statusClass = r.model_exists ? 'found' : (r.brand_exists ? 'not-found' : 'not-found');
+    lastRecognitionResult = r;
     const confClass = `confidence-${r.confidence || 'low'}`;
 
-    let statusBadge, actionButtons;
+    let statusBadge, mode, saveLabel;
     if (r.model_exists) {
         statusBadge = '<span class="badge bg-success fs-6"><i class="bi bi-check-circle me-1"></i>Found in database</span>';
-        actionButtons = `
-            <button class="btn btn-primary" onclick='openEditFromResult(${JSON.stringify(r).replace(/'/g,"&#39;")})'>
-                <i class="bi bi-pencil me-1"></i>Edit Model
-            </button>`;
+        mode = 'edit';
+        saveLabel = '<i class="bi bi-pencil me-1"></i>Update Model';
     } else if (r.brand_exists) {
         statusBadge = '<span class="badge bg-warning text-dark fs-6"><i class="bi bi-exclamation-triangle me-1"></i>Brand exists, model not found</span>';
-        actionButtons = `
-            <button class="btn btn-success" onclick='openAddFromResult(${JSON.stringify(r).replace(/'/g,"&#39;")})'>
-                <i class="bi bi-plus-circle me-1"></i>Add Model to ${r.brand}
-            </button>`;
+        mode = 'add';
+        saveLabel = '<i class="bi bi-plus-circle me-1"></i>Add Model to ' + r.brand;
     } else {
         statusBadge = '<span class="badge bg-secondary fs-6"><i class="bi bi-question-circle me-1"></i>Not in database</span>';
-        actionButtons = `
-            <button class="btn btn-success" onclick='addBrandAndModelFromResult(${JSON.stringify(r).replace(/'/g,"&#39;")})'>
-                <i class="bi bi-plus-circle me-1"></i>Add Brand + Model
-            </button>`;
+        mode = 'add_brand';
+        saveLabel = '<i class="bi bi-plus-circle me-1"></i>Add Brand + Model';
     }
 
-    const check = v => v ? '<i class="bi bi-check-lg text-success"></i>' : '<i class="bi bi-dash text-muted"></i>';
+    // Use existing_model values when editing, recognition values otherwise
+    const src = (mode === 'edit' && r.existing_model) ? r.existing_model : r;
+    const speedOpts = ['Q','R','S','T','H','V','W','Y'];
+    const speedSelect = speedOpts.map(s => `<option value="${s}" ${(src.speed_index||'W')===s?'selected':''}>${s}</option>`).join('');
+    const typeVal = src.type || r.type || 'Ete';
 
     document.getElementById('resultArea').innerHTML = `
-        <div class="result-card ${statusClass} p-3 mb-3 bg-light rounded">
+        <div class="result-card ${mode==='edit'?'found':'not-found'} p-3 bg-light rounded">
             <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
                 <div>
-                    <h3 class="mb-1">${r.brand || 'Unknown'}</h3>
-                    <h5 class="text-muted">${r.model || 'Unknown model'}</h5>
+                    <span class="text-muted small">Detected by Claude Opus 4.6</span>
+                    <span class="${confClass} fw-bold ms-2">(${r.confidence || '?'} confidence)</span>
                 </div>
                 ${statusBadge}
             </div>
-            <div class="row g-2 mb-3">
-                <div class="col-6 col-md-4"><strong>Type:</strong> ${r.type || '-'}</div>
-                <div class="col-6 col-md-4"><strong>Size:</strong> ${r.size || '-'}</div>
-                <div class="col-6 col-md-4"><strong>Speed:</strong> ${r.speed_index || '-'}</div>
-                <div class="col-6 col-md-4"><strong>Load:</strong> ${r.load_index || '-'}</div>
-                <div class="col-6 col-md-4"><strong>Confidence:</strong> <span class="${confClass} fw-bold">${r.confidence || '-'}</span></div>
-            </div>
-            <div class="row g-2 mb-3">
-                <div class="col-6 col-md-3">3PMSF: ${check(r['3pmsf'])}</div>
-                <div class="col-6 col-md-3">Runflat: ${check(r.runflat)}</div>
-                <div class="col-6 col-md-3">Rim Prot.: ${check(r.protection_jante)}</div>
-                <div class="col-6 col-md-3">XL: ${check(r.renforce)}</div>
-            </div>
             ${r.notes ? `<p class="text-muted small mb-3"><i class="bi bi-info-circle me-1"></i>${r.notes}</p>` : ''}
-            <div class="d-flex gap-2 flex-wrap">${actionButtons}</div>
-        </div>
-        ${r.model_exists && r.existing_model ? `
-        <div class="mt-3 p-3 border rounded">
-            <h6 class="text-muted mb-2">Current database entry:</h6>
-            <div class="row g-1 small">
-                <div class="col-6"><strong>Type:</strong> ${r.existing_model.type}</div>
-                <div class="col-6"><strong>Speed:</strong> ${r.existing_model.speed_index || '-'}</div>
-                <div class="col-6"><strong>Load:</strong> ${r.existing_model.load_index || '-'}</div>
-                <div class="col-6"><strong>Price:</strong> ${r.existing_model.price || '-'}€</div>
+            ${r.size ? `<p class="small mb-3"><strong>Detected size:</strong> ${r.size}</p>` : ''}
+
+            <hr>
+            <h6 class="mb-3"><i class="bi bi-pencil-square me-1"></i>${mode==='edit'?'Edit model details':'Fill in model details'}</h6>
+
+            <div id="resultFormMessage"></div>
+
+            <div class="row g-2">
+                <div class="col-md-6 mb-2">
+                    <label class="form-label small fw-bold">Brand</label>
+                    <input type="text" class="form-control form-control-sm" id="resBrand" value="${r.brand || ''}" ${mode==='edit'?'readonly':''}>
+                </div>
+                <div class="col-md-6 mb-2">
+                    <label class="form-label small fw-bold">Model Name</label>
+                    <input type="text" class="form-control form-control-sm" id="resModel" value="${(mode==='edit' ? r.model : r.model) || ''}" ${mode==='edit'?'readonly':''}>
+                </div>
             </div>
-        </div>` : ''}
+            <div class="row g-2">
+                <div class="col-md-4 mb-2">
+                    <label class="form-label small fw-bold">Type</label>
+                    <select class="form-select form-select-sm" id="resType">
+                        <option value="Ete" ${typeVal==='Ete'?'selected':''}>Été (Summer)</option>
+                        <option value="Hiver" ${typeVal==='Hiver'?'selected':''}>Hiver (Winter)</option>
+                        <option value="4 saisons" ${typeVal==='4 saisons'?'selected':''}>4 Saisons (All-Season)</option>
+                    </select>
+                </div>
+                <div class="col-md-4 mb-2">
+                    <label class="form-label small fw-bold">Speed Index</label>
+                    <select class="form-select form-select-sm" id="resSpeed">${speedSelect}</select>
+                </div>
+                <div class="col-md-4 mb-2">
+                    <label class="form-label small fw-bold">Load Index</label>
+                    <input type="text" class="form-control form-control-sm" id="resLoad" value="${src.load_index || r.load_index || ''}">
+                </div>
+            </div>
+            <div class="row g-2">
+                <div class="col-md-4 mb-2">
+                    <label class="form-label small fw-bold">Price (€)</label>
+                    <input type="text" class="form-control form-control-sm" id="resPrice" value="${src.price || ''}">
+                </div>
+            </div>
+            <div class="row g-2 mt-1">
+                <div class="col-6 col-md-3 mb-2">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="res3pmsf" ${(src['3pmsf']||r['3pmsf'])?'checked':''}>
+                        <label class="form-check-label small" for="res3pmsf">3PMSF</label>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3 mb-2">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="resRunflat" ${(src.runflat||r.runflat)?'checked':''}>
+                        <label class="form-check-label small" for="resRunflat">Runflat</label>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3 mb-2">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="resProtection" ${(src.protection_jante||r.protection_jante)?'checked':''}>
+                        <label class="form-check-label small" for="resProtection">Rim Prot.</label>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3 mb-2">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="resRenforce" ${(src.renforce||r.renforce)?'checked':''}>
+                        <label class="form-check-label small" for="resRenforce">Reinforced</label>
+                    </div>
+                </div>
+            </div>
+
+            <hr>
+            <div class="d-flex gap-2 flex-wrap">
+                <button class="btn btn-primary" onclick="saveFromResult('${mode}')">${saveLabel}</button>
+            </div>
+        </div>
     `;
 }
 
 // ===========================================================================
-// Actions from recognition result
+// Save directly from recognition result form
 // ===========================================================================
-function openEditFromResult(r) {
-    // Switch to DB tab, select brand, then open model modal
-    document.querySelector('[data-bs-target="#tabDatabase"]').click();
-    setTimeout(async () => {
-        await selectBrand(r.brand);
-        setTimeout(() => showModelModal(r.model), 300);
-    }, 200);
-}
+async function saveFromResult(mode) {
+    const brand = document.getElementById('resBrand').value.trim();
+    const model = document.getElementById('resModel').value.trim();
+    const msgEl = document.getElementById('resultFormMessage');
 
-function openAddFromResult(r) {
-    // Switch to DB tab, select brand, open modal pre-filled
-    document.querySelector('[data-bs-target="#tabDatabase"]').click();
-    setTimeout(async () => {
-        await selectBrand(r.brand);
-        setTimeout(() => {
-            showModelModal();
-            // Pre-fill from recognition
-            document.getElementById('modelName').value = r.model || '';
-            document.getElementById('modelType').value = r.type || 'Ete';
-            if (r.speed_index) document.getElementById('modelSpeed').value = r.speed_index;
-            if (r.load_index) document.getElementById('modelLoad').value = r.load_index;
-            document.getElementById('model3pmsf').checked = !!r['3pmsf'];
-            document.getElementById('modelRunflat').checked = !!r.runflat;
-            document.getElementById('modelProtection').checked = !!r.protection_jante;
-            document.getElementById('modelRenforce').checked = !!r.renforce;
-        }, 300);
-    }, 200);
-}
+    if (!brand || !model) {
+        msgEl.innerHTML = '<div class="alert alert-danger py-2">Brand and model name are required.</div>';
+        return;
+    }
 
-async function addBrandAndModelFromResult(r) {
-    // Add brand first, then open model add
-    const res = await fetch('/api/brands', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ name: r.brand })
-    });
-    const d = await res.json();
-    if (d.error) { showToast(d.error, 'danger'); return; }
-    showToast(`Brand "${r.brand}" added`, 'success');
-    await refreshBrands();
-    openAddFromResult(r);
+    const modelData = {
+        name: model,
+        type: document.getElementById('resType').value,
+        speed_index: document.getElementById('resSpeed').value,
+        load_index: document.getElementById('resLoad').value,
+        price: document.getElementById('resPrice').value,
+        '3pmsf': document.getElementById('res3pmsf').checked,
+        runflat: document.getElementById('resRunflat').checked,
+        protection_jante: document.getElementById('resProtection').checked,
+        renforce: document.getElementById('resRenforce').checked
+    };
+
+    try {
+        // If brand doesn't exist yet, create it first
+        if (mode === 'add_brand') {
+            const brandRes = await fetch('/api/brands', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ name: brand })
+            });
+            const brandData = await brandRes.json();
+            if (brandData.error) {
+                msgEl.innerHTML = `<div class="alert alert-danger py-2">${brandData.error}</div>`;
+                return;
+            }
+            showToast(`Brand "${brand}" created`, 'success');
+            mode = 'add'; // now add the model
+        }
+
+        let res;
+        if (mode === 'edit') {
+            // Update existing model
+            const origName = lastRecognitionResult.model;
+            res = await fetch(`/api/brands/${encodeURIComponent(brand)}/models/${encodeURIComponent(origName)}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(modelData)
+            });
+        } else {
+            // Add new model — server already checks for duplicates and returns error
+            res = await fetch(`/api/brands/${encodeURIComponent(brand)}/models`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(modelData)
+            });
+        }
+
+        const d = await res.json();
+        if (d.error) {
+            // This catches "Model already exists in this brand"
+            msgEl.innerHTML = `<div class="alert alert-danger py-2"><i class="bi bi-x-circle me-1"></i>${d.error}</div>`;
+            return;
+        }
+
+        const action = mode === 'edit' ? 'updated' : 'added';
+        msgEl.innerHTML = `<div class="alert alert-success py-2"><i class="bi bi-check-circle me-1"></i>Model "${model}" ${action} successfully in ${brand}!</div>`;
+        showToast(`Model ${action}: ${brand} - ${model}`, 'success');
+        refreshBrands();
+
+    } catch(e) {
+        msgEl.innerHTML = `<div class="alert alert-danger py-2">Error: ${e.message}</div>`;
+    }
 }
 
 // ===========================================================================
