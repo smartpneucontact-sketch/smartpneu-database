@@ -20,6 +20,8 @@ from flask import (
 )
 from dotenv import load_dotenv
 import anthropic
+import urllib.request
+import urllib.error
 
 load_dotenv()
 
@@ -29,10 +31,13 @@ app.secret_key = os.environ.get("SECRET_KEY", "smartpneu-secret-key-change-me")
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-DATABASE_FILE = os.path.join(os.path.dirname(__file__), "brands_models_expanded.json")
+DATABASE_FILE = os.path.join(os.path.dirname(__file__), "brands_models.json")
 BACKUP_DIR = os.path.join(os.path.dirname(__file__), "backups")
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "smartpneu")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+GITHUB_REPO = os.environ.get("GITHUB_REPO", "smartpneucontact-sketch/smartpneu-product-manager")
+GITHUB_FILE_PATH = os.environ.get("GITHUB_FILE_PATH", "brands_models.json")
 
 # ---------------------------------------------------------------------------
 # Database helpers
@@ -412,6 +417,71 @@ def import_database():
         return jsonify({"success": True, "stats": get_stats()})
     except Exception as e:
         return jsonify({"error": f"Error importing: {str(e)}"}), 400
+
+
+# ---------------------------------------------------------------------------
+# GitHub Sync — push brands_models.json to product manager repo
+# ---------------------------------------------------------------------------
+@app.route("/api/sync", methods=["POST"])
+@login_required
+def sync_to_github():
+    """Push the current database to the smartpneu-product-manager GitHub repo."""
+    if not GITHUB_TOKEN:
+        return jsonify({"error": "GitHub token not configured. Add GITHUB_TOKEN in environment variables."}), 500
+
+    try:
+        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}"
+
+        # Step 1: Get the current file SHA (needed for update)
+        get_req = urllib.request.Request(api_url, method="GET")
+        get_req.add_header("Authorization", f"token {GITHUB_TOKEN}")
+        get_req.add_header("Accept", "application/vnd.github.v3+json")
+
+        current_sha = None
+        try:
+            with urllib.request.urlopen(get_req) as resp:
+                existing = json.loads(resp.read().decode("utf-8"))
+                current_sha = existing.get("sha")
+        except urllib.error.HTTPError as e:
+            if e.code != 404:
+                raise
+
+        # Step 2: Read current database and encode as base64
+        with open(DATABASE_FILE, "r", encoding="utf-8") as f:
+            db_content = f.read()
+
+        encoded = base64.b64encode(db_content.encode("utf-8")).decode("utf-8")
+
+        # Step 3: Push to GitHub
+        payload = {
+            "message": f"Sync tire database — {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+            "content": encoded,
+            "branch": "main",
+        }
+        if current_sha:
+            payload["sha"] = current_sha
+
+        put_data = json.dumps(payload).encode("utf-8")
+        put_req = urllib.request.Request(api_url, data=put_data, method="PUT")
+        put_req.add_header("Authorization", f"token {GITHUB_TOKEN}")
+        put_req.add_header("Accept", "application/vnd.github.v3+json")
+        put_req.add_header("Content-Type", "application/json")
+
+        with urllib.request.urlopen(put_req) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+
+        stats = get_stats()
+        return jsonify({
+            "success": True,
+            "message": f"Synced {stats['brands']} brands and {stats['models']} models to Product Manager",
+            "commit_sha": result.get("commit", {}).get("sha", ""),
+        })
+
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        return jsonify({"error": f"GitHub API error ({e.code}): {body}"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Sync failed: {str(e)}"}), 500
 
 
 # ---------------------------------------------------------------------------
