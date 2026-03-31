@@ -107,6 +107,70 @@ def find_model(brand_obj, model_name):
     return None
 
 
+def similarity(a, b):
+    """Simple similarity score (0-1) using longest common subsequence ratio."""
+    a, b = a.lower().strip(), b.lower().strip()
+    if a == b:
+        return 1.0
+    if not a or not b:
+        return 0.0
+    # Check if one contains the other
+    if a in b or b in a:
+        return 0.9
+    # Levenshtein-like: count common characters in order
+    m, n = len(a), len(b)
+    dp = [[0] * (n + 1) for _ in range(m + 1)]
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            if a[i - 1] == b[j - 1]:
+                dp[i][j] = dp[i - 1][j - 1] + 1
+            else:
+                dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])
+    lcs = dp[m][n]
+    return (2.0 * lcs) / (m + n)
+
+
+def find_similar_brands(query, threshold=0.45):
+    """Find brands similar to query string."""
+    if not query or not query.strip():
+        return []
+    results = []
+    for b in data.get("brands", []):
+        name = b["name"]
+        score = similarity(query, name)
+        if score >= threshold:
+            results.append({
+                "name": name,
+                "score": round(score, 2),
+                "exact": name.lower() == query.lower().strip(),
+                "model_count": len(b.get("models", []))
+            })
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return results[:10]
+
+
+def find_similar_models(brand_name, model_query, threshold=0.45):
+    """Find models in a brand similar to query string."""
+    if not model_query or not model_query.strip():
+        return []
+    brand = find_brand(brand_name)
+    if not brand:
+        return []
+    results = []
+    for m in brand.get("models", []):
+        name = m["name"]
+        score = similarity(model_query, name)
+        if score >= threshold:
+            results.append({
+                "name": name,
+                "score": round(score, 2),
+                "exact": name.lower() == model_query.lower().strip(),
+                "model": m
+            })
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return results[:10]
+
+
 # ---------------------------------------------------------------------------
 # Auth decorator
 # ---------------------------------------------------------------------------
@@ -417,6 +481,32 @@ def import_database():
         return jsonify({"success": True, "stats": get_stats()})
     except Exception as e:
         return jsonify({"error": f"Error importing: {str(e)}"}), 400
+
+
+# ---------------------------------------------------------------------------
+# Similarity check API — for manual entry validation
+# ---------------------------------------------------------------------------
+@app.route("/api/check-brand", methods=["GET"])
+@login_required
+def check_brand():
+    """Check if a brand name already exists or is similar to existing ones."""
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify({"matches": []})
+    matches = find_similar_brands(q)
+    return jsonify({"matches": matches})
+
+
+@app.route("/api/check-model", methods=["GET"])
+@login_required
+def check_model():
+    """Check if a model name already exists or is similar in a given brand."""
+    brand = request.args.get("brand", "").strip()
+    q = request.args.get("q", "").strip()
+    if not brand or not q:
+        return jsonify({"matches": []})
+    matches = find_similar_models(brand, q)
+    return jsonify({"matches": matches})
 
 
 # ---------------------------------------------------------------------------

@@ -115,6 +115,11 @@
             </button>
         </li>
         <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabManual" type="button">
+                <i class="bi bi-pencil-square me-1"></i> Manual Entry
+            </button>
+        </li>
+        <li class="nav-item">
             <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabDatabase" type="button">
                 <i class="bi bi-database me-1"></i> Database Manager
             </button>
@@ -224,6 +229,113 @@
                                 <i class="bi bi-camera display-3 d-block mb-3"></i>
                                 <h5>Take or upload a tire photo</h5>
                                 <p>Claude Opus 4.6 will identify the brand, model, and specs</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- TAB: MANUAL ENTRY                                             -->
+        <!-- ============================================================ -->
+        <div class="tab-pane fade" id="tabManual">
+            <div class="row justify-content-center">
+                <div class="col-lg-8">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="bi bi-pencil-square me-2"></i>Manual Tire Entry</h5>
+                            <small class="text-muted">Add a tire manually — the system checks for duplicates and similar entries before saving</small>
+                        </div>
+                        <div class="card-body">
+                            <div id="manualFormMessage"></div>
+
+                            <!-- Brand -->
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Brand *</label>
+                                <input type="text" class="form-control" id="manualBrand" placeholder="e.g., Michelin, Goodyear..."
+                                       autocomplete="off" oninput="checkBrandSimilarity()">
+                                <div id="brandSuggestions" class="mt-1"></div>
+                            </div>
+
+                            <!-- Model -->
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Model Name *</label>
+                                <input type="text" class="form-control" id="manualModel" placeholder="e.g., Pilot Sport 4, Eagle F1..."
+                                       autocomplete="off" oninput="checkModelSimilarity()">
+                                <div id="modelSuggestions" class="mt-1"></div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label fw-bold">Type *</label>
+                                    <select class="form-select" id="manualType">
+                                        <option value="Ete">Été (Summer)</option>
+                                        <option value="Hiver">Hiver (Winter)</option>
+                                        <option value="4 saisons">4 Saisons (All-Season)</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label fw-bold">Speed Index</label>
+                                    <select class="form-select" id="manualSpeed">
+                                        <option value="Q">Q (160 km/h)</option><option value="R">R (170)</option>
+                                        <option value="S">S (180)</option><option value="T">T (190)</option>
+                                        <option value="H">H (210)</option><option value="V">V (240)</option>
+                                        <option value="W" selected>W (270)</option><option value="Y">Y (300)</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label fw-bold">Load Index</label>
+                                    <input type="text" class="form-control" id="manualLoad" placeholder="e.g., 91">
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label fw-bold">Price (€)</label>
+                                    <input type="text" class="form-control" id="manualPrice" placeholder="e.g., 150.00">
+                                </div>
+                            </div>
+
+                            <div class="row mt-1">
+                                <div class="col-6 col-md-3 mb-3">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="manual3pmsf">
+                                        <label class="form-check-label" for="manual3pmsf">3PMSF</label>
+                                    </div>
+                                    <small class="text-muted">Winter certified</small>
+                                </div>
+                                <div class="col-6 col-md-3 mb-3">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="manualRunflat">
+                                        <label class="form-check-label" for="manualRunflat">Runflat</label>
+                                    </div>
+                                    <small class="text-muted">Run-flat technology</small>
+                                </div>
+                                <div class="col-6 col-md-3 mb-3">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="manualProtection">
+                                        <label class="form-check-label" for="manualProtection">Rim Prot.</label>
+                                    </div>
+                                    <small class="text-muted">Rim protection</small>
+                                </div>
+                                <div class="col-6 col-md-3 mb-3">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="manualRenforce">
+                                        <label class="form-check-label" for="manualRenforce">Reinforced</label>
+                                    </div>
+                                    <small class="text-muted">XL / Extra Load</small>
+                                </div>
+                            </div>
+
+                            <hr>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-success btn-lg" onclick="saveManualEntry()" id="manualSaveBtn">
+                                    <i class="bi bi-plus-circle me-1"></i>Add to Database
+                                </button>
+                                <button class="btn btn-outline-secondary" onclick="clearManualForm()">
+                                    <i class="bi bi-x-lg me-1"></i>Clear
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -995,6 +1107,241 @@ async function syncToProductManager() {
         btn.disabled = false;
         if (btn.innerHTML.includes('Syncing')) btn.innerHTML = origHtml;
     }
+}
+
+// ===========================================================================
+// Manual Entry — with similarity checking
+// ===========================================================================
+let brandCheckTimeout, modelCheckTimeout;
+let manualBrandValid = false; // tracks if brand is confirmed
+
+function checkBrandSimilarity() {
+    clearTimeout(brandCheckTimeout);
+    const q = document.getElementById('manualBrand').value.trim();
+    const el = document.getElementById('brandSuggestions');
+    if (q.length < 2) { el.innerHTML = ''; manualBrandValid = false; return; }
+
+    brandCheckTimeout = setTimeout(async () => {
+        const res = await fetch(`/api/check-brand?q=${encodeURIComponent(q)}`);
+        const d = await res.json();
+        const matches = d.matches || [];
+
+        if (!matches.length) {
+            el.innerHTML = `<div class="alert alert-info py-2 small mb-0">
+                <i class="bi bi-info-circle me-1"></i>New brand — "<strong>${q}</strong>" will be created when you save.
+            </div>`;
+            manualBrandValid = true;
+            return;
+        }
+
+        const exact = matches.find(m => m.exact);
+        if (exact) {
+            el.innerHTML = `<div class="alert alert-success py-2 small mb-0">
+                <i class="bi bi-check-circle me-1"></i><strong>${exact.name}</strong> found in database (${exact.model_count} models). Model will be added to this brand.
+            </div>`;
+            document.getElementById('manualBrand').value = exact.name; // use correct casing
+            manualBrandValid = true;
+            // Re-check model if already filled
+            if (document.getElementById('manualModel').value.trim()) checkModelSimilarity();
+            return;
+        }
+
+        // Similar but not exact
+        let html = `<div class="alert alert-warning py-2 small mb-0">
+            <i class="bi bi-exclamation-triangle me-1"></i>Did you mean one of these existing brands?
+            <div class="mt-2">`;
+        matches.forEach(m => {
+            html += `<button class="btn btn-sm btn-outline-dark me-1 mb-1" onclick="pickBrandSuggestion('${m.name.replace(/'/g,"\\'")}')">
+                ${m.name} <span class="text-muted">(${m.model_count} models, ${Math.round(m.score*100)}% match)</span>
+            </button>`;
+        });
+        html += `</div>
+            <div class="mt-2">
+                <button class="btn btn-sm btn-outline-primary" onclick="confirmNewBrand()">
+                    <i class="bi bi-plus me-1"></i>No, create new brand "${q}"
+                </button>
+            </div>
+        </div>`;
+        el.innerHTML = html;
+        manualBrandValid = false;
+    }, 300);
+}
+
+function pickBrandSuggestion(name) {
+    document.getElementById('manualBrand').value = name;
+    document.getElementById('brandSuggestions').innerHTML = `<div class="alert alert-success py-2 small mb-0">
+        <i class="bi bi-check-circle me-1"></i>Using existing brand: <strong>${name}</strong>
+    </div>`;
+    manualBrandValid = true;
+    // Re-check model
+    if (document.getElementById('manualModel').value.trim()) checkModelSimilarity();
+}
+
+function confirmNewBrand() {
+    const q = document.getElementById('manualBrand').value.trim();
+    document.getElementById('brandSuggestions').innerHTML = `<div class="alert alert-info py-2 small mb-0">
+        <i class="bi bi-plus-circle me-1"></i>New brand "<strong>${q}</strong>" will be created.
+    </div>`;
+    manualBrandValid = true;
+}
+
+function checkModelSimilarity() {
+    clearTimeout(modelCheckTimeout);
+    const brand = document.getElementById('manualBrand').value.trim();
+    const q = document.getElementById('manualModel').value.trim();
+    const el = document.getElementById('modelSuggestions');
+    if (q.length < 2 || !brand) { el.innerHTML = ''; return; }
+
+    modelCheckTimeout = setTimeout(async () => {
+        const res = await fetch(`/api/check-model?brand=${encodeURIComponent(brand)}&q=${encodeURIComponent(q)}`);
+        const d = await res.json();
+        const matches = d.matches || [];
+
+        if (!matches.length) {
+            el.innerHTML = `<div class="alert alert-info py-2 small mb-0">
+                <i class="bi bi-check-circle me-1"></i>No similar model found in ${brand}. Ready to add.
+            </div>`;
+            return;
+        }
+
+        const exact = matches.find(m => m.exact);
+        if (exact) {
+            el.innerHTML = `<div class="alert alert-danger py-2 small mb-0">
+                <i class="bi bi-x-circle me-1"></i><strong>${exact.name}</strong> already exists in ${brand}! Cannot add a duplicate.
+                <div class="mt-1">
+                    <button class="btn btn-sm btn-outline-primary" onclick="editExistingFromManual('${brand.replace(/'/g,"\\'")}', '${exact.name.replace(/'/g,"\\'")}')">
+                        <i class="bi bi-pencil me-1"></i>Edit existing model instead
+                    </button>
+                </div>
+            </div>`;
+            return;
+        }
+
+        // Similar but not exact
+        let html = `<div class="alert alert-warning py-2 small mb-0">
+            <i class="bi bi-exclamation-triangle me-1"></i>Similar models found in ${brand}:
+            <div class="mt-2">`;
+        matches.forEach(m => {
+            html += `<div class="d-flex align-items-center gap-2 mb-1">
+                <span><strong>${m.name}</strong> <span class="text-muted">(${Math.round(m.score*100)}% match)</span></span>
+                <button class="btn btn-sm btn-outline-secondary" onclick="editExistingFromManual('${brand.replace(/'/g,"\\'")}', '${m.name.replace(/'/g,"\\'")}')">
+                    <i class="bi bi-pencil"></i>
+                </button>
+            </div>`;
+        });
+        html += `</div>
+            <div class="mt-2">
+                <small class="text-muted">If this is a different model, you can still save it.</small>
+            </div>
+        </div>`;
+        el.innerHTML = html;
+    }, 300);
+}
+
+function editExistingFromManual(brand, model) {
+    // Switch to DB tab and open the model for editing
+    document.querySelector('[data-bs-target="#tabDatabase"]').click();
+    setTimeout(async () => {
+        await selectBrand(brand);
+        setTimeout(() => showModelModal(model), 300);
+    }, 200);
+}
+
+async function saveManualEntry() {
+    const brand = document.getElementById('manualBrand').value.trim();
+    const model = document.getElementById('manualModel').value.trim();
+    const msgEl = document.getElementById('manualFormMessage');
+
+    if (!brand || !model) {
+        msgEl.innerHTML = '<div class="alert alert-danger py-2"><i class="bi bi-x-circle me-1"></i>Brand and Model name are required.</div>';
+        return;
+    }
+
+    if (!manualBrandValid) {
+        msgEl.innerHTML = '<div class="alert alert-warning py-2"><i class="bi bi-exclamation-triangle me-1"></i>Please confirm the brand first — check the suggestions above.</div>';
+        return;
+    }
+
+    // Final server-side duplicate check
+    const checkRes = await fetch(`/api/check-model?brand=${encodeURIComponent(brand)}&q=${encodeURIComponent(model)}`);
+    const checkData = await checkRes.json();
+    const exactDup = (checkData.matches || []).find(m => m.exact);
+    if (exactDup) {
+        msgEl.innerHTML = `<div class="alert alert-danger py-2"><i class="bi bi-x-circle me-1"></i>"${model}" already exists in ${brand}. Cannot add duplicate.</div>`;
+        return;
+    }
+
+    const modelData = {
+        name: model,
+        type: document.getElementById('manualType').value,
+        speed_index: document.getElementById('manualSpeed').value,
+        load_index: document.getElementById('manualLoad').value,
+        price: document.getElementById('manualPrice').value,
+        '3pmsf': document.getElementById('manual3pmsf').checked,
+        runflat: document.getElementById('manualRunflat').checked,
+        protection_jante: document.getElementById('manualProtection').checked,
+        renforce: document.getElementById('manualRenforce').checked
+    };
+
+    const btn = document.getElementById('manualSaveBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving...';
+
+    try {
+        // Create brand if it doesn't exist
+        const brandExists = await fetch(`/api/check-brand?q=${encodeURIComponent(brand)}`);
+        const brandData = await brandExists.json();
+        const exactBrand = (brandData.matches || []).find(m => m.exact);
+
+        if (!exactBrand) {
+            const createRes = await fetch('/api/brands', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ name: brand })
+            });
+            const createData = await createRes.json();
+            if (createData.error) {
+                msgEl.innerHTML = `<div class="alert alert-danger py-2">${createData.error}</div>`;
+                return;
+            }
+            showToast(`Brand "${brand}" created`, 'success');
+        }
+
+        // Add model
+        const res = await fetch(`/api/brands/${encodeURIComponent(brand)}/models`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(modelData)
+        });
+        const d = await res.json();
+
+        if (d.error) {
+            msgEl.innerHTML = `<div class="alert alert-danger py-2"><i class="bi bi-x-circle me-1"></i>${d.error}</div>`;
+        } else {
+            msgEl.innerHTML = `<div class="alert alert-success py-2"><i class="bi bi-check-circle me-1"></i><strong>${model}</strong> added to <strong>${brand}</strong> successfully!</div>`;
+            showToast(`Added: ${brand} — ${model}`, 'success');
+            refreshBrands();
+            // Clear model field for next entry, keep brand
+            document.getElementById('manualModel').value = '';
+            document.getElementById('modelSuggestions').innerHTML = '';
+        }
+    } catch(e) {
+        msgEl.innerHTML = `<div class="alert alert-danger py-2">Error: ${e.message}</div>`;
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-plus-circle me-1"></i>Add to Database';
+    }
+}
+
+function clearManualForm() {
+    ['manualBrand','manualModel','manualLoad','manualPrice'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('manualType').value = 'Ete';
+    document.getElementById('manualSpeed').value = 'W';
+    ['manual3pmsf','manualRunflat','manualProtection','manualRenforce'].forEach(id => document.getElementById(id).checked = false);
+    document.getElementById('brandSuggestions').innerHTML = '';
+    document.getElementById('modelSuggestions').innerHTML = '';
+    document.getElementById('manualFormMessage').innerHTML = '';
+    manualBrandValid = false;
 }
 </script>
 </body>
