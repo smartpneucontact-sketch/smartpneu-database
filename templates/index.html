@@ -97,9 +97,7 @@
     <div class="container-fluid">
         <span class="navbar-brand"><i class="bi bi-gear-wide-connected me-2"></i>SmartPneu Database</span>
         <div class="d-flex align-items-center gap-2">
-            <button class="btn btn-warning btn-sm fw-bold" onclick="syncToProductManager()" id="syncBtn">
-                <i class="bi bi-arrow-repeat me-1"></i>Sync to Product Manager
-            </button>
+            <span class="badge bg-light text-dark me-1"><i class="bi bi-link-45deg me-1"></i>Live API</span>
             <a href="/logout" class="btn btn-outline-light btn-sm"><i class="bi bi-box-arrow-right"></i></a>
         </div>
     </div>
@@ -1079,34 +1077,6 @@ async function importDatabase(input) {
     const d = await res.json();
     if (d.error) showToast(d.error,'danger'); else { showToast('Database imported'); location.reload(); }
     input.value='';
-}
-
-// ===========================================================================
-// Sync to Product Manager (GitHub push)
-// ===========================================================================
-async function syncToProductManager() {
-    const btn = document.getElementById('syncBtn');
-    const origHtml = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Syncing...';
-
-    try {
-        const res = await fetch('/api/sync', { method: 'POST' });
-        const d = await res.json();
-        if (d.error) {
-            showToast(d.error, 'danger');
-        } else {
-            showToast(d.message, 'success');
-            btn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Synced!';
-            btn.className = 'btn btn-success btn-sm fw-bold';
-            setTimeout(() => { btn.innerHTML = origHtml; btn.className = 'btn btn-warning btn-sm fw-bold'; }, 3000);
-        }
-    } catch(e) {
-        showToast('Sync failed: ' + e.message, 'danger');
-    } finally {
-        btn.disabled = false;
-        if (btn.innerHTML.includes('Syncing')) btn.innerHTML = origHtml;
-    }
 }
 
 // ===========================================================================

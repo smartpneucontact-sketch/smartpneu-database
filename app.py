@@ -20,8 +20,6 @@ from flask import (
 )
 from dotenv import load_dotenv
 import anthropic
-import urllib.request
-import urllib.error
 
 load_dotenv()
 
@@ -35,9 +33,7 @@ DATABASE_FILE = os.path.join(os.path.dirname(__file__), "brands_models.json")
 BACKUP_DIR = os.path.join(os.path.dirname(__file__), "backups")
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "smartpneu")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
-GITHUB_REPO = os.environ.get("GITHUB_REPO", "smartpneucontact-sketch/smartpneu-product-manager")
-GITHUB_FILE_PATH = os.environ.get("GITHUB_FILE_PATH", "brands_models.json")
+API_KEY = os.environ.get("API_KEY", "")  # shared key for product manager access
 
 # ---------------------------------------------------------------------------
 # Database helpers
@@ -510,68 +506,51 @@ def check_model():
 
 
 # ---------------------------------------------------------------------------
-# GitHub Sync — push brands_models.json to product manager repo
+# External API — product manager fetches live database from here
 # ---------------------------------------------------------------------------
-@app.route("/api/sync", methods=["POST"])
-@login_required
-def sync_to_github():
-    """Push the current database to the smartpneu-product-manager GitHub repo."""
-    if not GITHUB_TOKEN:
-        return jsonify({"error": "GitHub token not configured. Add GITHUB_TOKEN in environment variables."}), 500
+@app.route("/api/live-database", methods=["GET"])
+def live_database():
+    """
+    Public endpoint secured by API_KEY.
+    The product manager calls this to get the latest brands_models data.
+    No login session needed — just the API key in the header or query param.
+    """
+    key = request.headers.get("X-API-Key") or request.args.get("api_key", "")
+    if not API_KEY:
+        return jsonify({"error": "API_KEY not configured on server"}), 500
+    if key != API_KEY:
+        return jsonify({"error": "Invalid API key"}), 401
 
-    try:
-        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}"
+    return jsonify(data)
 
-        # Step 1: Get the current file SHA (needed for update)
-        get_req = urllib.request.Request(api_url, method="GET")
-        get_req.add_header("Authorization", f"token {GITHUB_TOKEN}")
-        get_req.add_header("Accept", "application/vnd.github.v3+json")
 
-        current_sha = None
-        try:
-            with urllib.request.urlopen(get_req) as resp:
-                existing = json.loads(resp.read().decode("utf-8"))
-                current_sha = existing.get("sha")
-        except urllib.error.HTTPError as e:
-            if e.code != 404:
-                raise
+@app.route("/api/live-database/brands", methods=["GET"])
+def live_brands():
+    """Return just brand names + model names (lighter payload)."""
+    key = request.headers.get("X-API-Key") or request.args.get("api_key", "")
+    if not API_KEY or key != API_KEY:
+        return jsonify({"error": "Invalid API key"}), 401
 
-        # Step 2: Read current database and encode as base64
-        with open(DATABASE_FILE, "r", encoding="utf-8") as f:
-            db_content = f.read()
+    brands = {}
+    for b in data.get("brands", []):
+        brands[b["name"]] = [m["name"] for m in b.get("models", [])]
+    return jsonify(brands)
 
-        encoded = base64.b64encode(db_content.encode("utf-8")).decode("utf-8")
 
-        # Step 3: Push to GitHub
-        payload = {
-            "message": f"Sync tire database — {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-            "content": encoded,
-            "branch": "main",
-        }
-        if current_sha:
-            payload["sha"] = current_sha
+@app.route("/api/live-database/model-details/<brand>/<model>", methods=["GET"])
+def live_model_details(brand, model):
+    """Return full details for a specific model."""
+    key = request.headers.get("X-API-Key") or request.args.get("api_key", "")
+    if not API_KEY or key != API_KEY:
+        return jsonify({"error": "Invalid API key"}), 401
 
-        put_data = json.dumps(payload).encode("utf-8")
-        put_req = urllib.request.Request(api_url, data=put_data, method="PUT")
-        put_req.add_header("Authorization", f"token {GITHUB_TOKEN}")
-        put_req.add_header("Accept", "application/vnd.github.v3+json")
-        put_req.add_header("Content-Type", "application/json")
-
-        with urllib.request.urlopen(put_req) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
-
-        stats = get_stats()
-        return jsonify({
-            "success": True,
-            "message": f"Synced {stats['brands']} brands and {stats['models']} models to Product Manager",
-            "commit_sha": result.get("commit", {}).get("sha", ""),
-        })
-
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        return jsonify({"error": f"GitHub API error ({e.code}): {body}"}), 500
-    except Exception as e:
-        return jsonify({"error": f"Sync failed: {str(e)}"}), 500
+    brand_obj = find_brand(brand)
+    if not brand_obj:
+        return jsonify({"error": "Brand not found"}), 404
+    model_obj = find_model(brand_obj, model)
+    if not model_obj:
+        return jsonify({"error": "Model not found"}), 404
+    return jsonify({"success": True, "model": model_obj})
 
 
 # ---------------------------------------------------------------------------
